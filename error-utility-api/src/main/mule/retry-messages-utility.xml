@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd">
+
+<flow name="retryable-messages-utility-flow" doc:id="28afa6d6-e20f-4119-96e3-acdcd628bd8b" >
+		<scheduler doc:name="Scheduler" doc:id="4c26d73c-5b09-41d0-8000-2ecbb5053c7a" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="10000"/>
+			</scheduling-strategy>
+		</scheduler>
+		<logger level="INFO" doc:name="INFO: Outbound Request" doc:id="d9506936-4a93-4e22-9210-fb82b194ba87" message="Retrieving records from error_db"/>
+		<db:select doc:name="Retryable Messages" doc:id="3a8710ac-f4f7-47bb-9e7d-31b03accd205" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT * FROM ERROR_DB WHERE RETRY_FLAG = :retry]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	"retry": "Y"
+}]]]></db:input-parameters>
+		</db:select>
+		<logger level="INFO" doc:name="INFO: Outbound Response" doc:id="b9a8b656-8298-4f8b-8c07-6288f917677e" message="Records retrieved from error_db"/>
+		<choice doc:name="Choice" doc:id="74cb1418-fafb-43f7-80b4-fa10c4721023" >
+			<when expression="#[!isEmpty(payload)]">
+				<foreach doc:name="For Each" doc:id="3626dbe2-04b3-4411-b901-fdaf9ac24cf3" collection="#[payload]">
+					<ee:dynamic-evaluate doc:name="Dynamic Evaluate" doc:id="8f012400-1c76-4005-a61a-ad1f03ffc76d" target="message" expression='#["output " ++ (payload.MIME_TYPE splitBy ";")[0] ++ " --- read(payload.PAYLOAD,payload.MIME_TYPE)"]'/>
+					<set-variable value="#[output application/json --- read(payload.PROPERTIES,'application/json')]" doc:name="Properties" doc:id="3f8f6ee6-8170-4073-8ff0-f78db7b34f5d" variableName="properties" />
+					<set-variable value="#[output application/json --- read(payload.HEADERS,'application/json')]" doc:name="Headers" doc:id="14946fb6-d417-467b-abaf-d4c1fafe3d9c" variableName="headers" />
+					<logger level="INFO" doc:name="INFO: Outbound Request" doc:id="b16e1f78-d614-4704-8f16-8693643f06b3" message="Publishing message to queue"/>
+					<amqp:publish doc:name="Publish" doc:id="9a1d9583-2eda-4d4d-adfc-cbdc34cd429b" config-ref="AMQP_Config" exchangeName='#[""]' routingKeys="#[[payload.ROUTINGKEY]]">
+						<amqp:message properties="#[output application/json --- read(payload.PROPERTIES,'application/json') - &quot;deliveryMode&quot;]">
+							<amqp:body ><![CDATA[#[vars.message]]]></amqp:body>
+							<amqp:headers ><![CDATA[#[output application/json --- read(payload.HEADERS,'application/json')]]]></amqp:headers>
+						</amqp:message>
+					</amqp:publish>
+					<logger level="INFO" doc:name="INFO: Outbound Response" doc:id="e26732e1-e5d7-495a-8101-fd222d267791" message="Messaged published to queue"/>
+					<logger level="INFO" doc:name="Logger" doc:id="b5b3507a-b1a3-4aaf-a27b-3f8ece1c91ae" message="#[output application/json --- payload]"/>
+					<logger level="INFO" doc:name="INFO: Outbound Request" doc:id="049c3c5f-6857-4f29-a24a-e991cab322aa" message="Updating record in error_db"/>
+					<db:update doc:name="Update" doc:id="6a03d3c5-5ee8-4695-bd6d-4c6b3a8bd638" config-ref="Database_Config">
+						<db:sql ><![CDATA[UPDATE ERROR_DB SET RETRY_FLAG = :retry WHERE ID = :id]]></db:sql>
+						<db:input-parameters ><![CDATA[#[{
+	"id": payload.ID,
+	"retry": "I"
+}]]]></db:input-parameters>
+					</db:update>
+					<logger level="INFO" doc:name="INFO: Outbound Response" doc:id="0f51bff4-32a7-4a14-b4c8-1b7b80bef831" message="Record updated in error_db"/>
+				</foreach>
+				<logger level="INFO" doc:name="INFO: Request Completed" doc:id="db35226a-e79e-4062-ab72-415e59ffd42b" message="Messages published" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="INFO: No Records Present" doc:id="cdb31891-957b-477d-a84d-790d1e2cd088" message="No records present in error_db"/>
+			</otherwise>
+		</choice>
+	</flow>	
+
+	
+</mule>

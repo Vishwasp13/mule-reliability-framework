@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<error-handler name="global-error-handler" doc:id="4ceed996-e3c4-44cd-b8cf-2a3d81545c5d" >
+		<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="5a0d9cde-b303-4ec8-98fc-91f4848429cd" when='error.errorType.identifier == "CONNECTIVITY"'>
+			<choice doc:name="Choice" doc:id="2fa465c7-715e-4c93-992f-d2624e682666" >
+				<when expression="#[(vars.attributes.headers['x-dlq-retry-count'] default 0) &lt; 2]">
+					<logger level="WARN" doc:name="WARN: Message Rejected" doc:id="3d11c7b7-b7aa-4d6e-83bc-6421d6bef9a7" message="Rejecting message for retry, count #[vars.attributes.headers['x-dlq-retry-count']]"/>
+					<amqp:reject doc:name="Reject" doc:id="ceacd888-a0ce-40d3-adb8-965a4939d9f9" ackId="#[vars.attributes.ackId]"/>
+				</when>
+				<otherwise >
+					<logger level="WARN" doc:name="WARN: Moving to error-q" doc:id="6873f985-fb0c-418e-b19d-859bdaf85952" message="Retries exhausted, moving message to error-q. Count #[vars.attributes.headers['x-dlq-retry-count']]"/>
+					<set-variable value="#['RETRIES EXHAUSTED']" doc:name="Cause" doc:id="78bd5ba9-579e-41dd-9519-660e34ee733e" variableName="cause"/>
+					<flow-ref doc:name="move-messages-to-error-q-subflow" doc:id="5804e540-3a55-41f5-8b96-d600ea4f58ed" name="move-messages-to-error-q-subflow"/>
+				</otherwise>
+			</choice>
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="64dd1763-71bf-43e5-8237-5028a08a2783" type="ANY">
+			<logger level="ERROR" doc:name="ERROR: Description" doc:id="1a806832-e07f-468d-98e0-02e78e279128" message="Generic Error Occured #[error.description]"/>
+			<set-variable value='#["ERROR"]' doc:name="Cause" doc:id="ef153920-78f7-412c-933f-1a1ac4ec5f95" variableName="cause"/>
+			<flow-ref doc:name="move-messages-to-error-q-subflow" doc:id="4def4108-8dd2-4e78-889a-f0a2e8db5a98" name="move-messages-to-error-q-subflow"/>
+		</on-error-propagate>
+	</error-handler>
+	<sub-flow name="move-messages-to-error-q-subflow" doc:id="66a8a3ca-d0da-4e18-b9e7-1483e663b230" >
+		<ee:transform doc:name="Transform Message" doc:id="1f0f1cfd-19eb-4247-aeb3-20b8797f86ce">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+ 	"appId": app.name,
+ 	"message": write(vars.backup, vars.backup.^mimeType),
+    "cause": vars.cause,
+ 	"description": error.description,
+ 	"type": (error.errorType default {}).namespace ++ ":" ++ (error.errorType default {}).identifier,
+ 	"attributes": vars.attributes
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+		<logger level="INFO" doc:name="INFO: Outbound Request" doc:id="6509ef1e-07a6-476f-8ff6-961a8198936e" message="Publishing message to error-q"/>
+		<amqp:publish doc:name="error-q" doc:id="b56ebfdd-20f0-458a-bda8-9d6a8d38f6e9" config-ref="AMQP_Config" routingKeys='#[["error-q"]]' exchangeName='#[""]'/>
+		<logger level="INFO" doc:name="INFO: Outbound Response" doc:id="f0e0c079-46e1-4c8f-9704-7489eb95d47a" />
+		<amqp:ack doc:name="Ack" doc:id="d4ff708e-f327-4cf6-93c5-ed03660f5945" ackId="#[vars.attributes.ackId]"/>
+	</sub-flow>
+</mule>

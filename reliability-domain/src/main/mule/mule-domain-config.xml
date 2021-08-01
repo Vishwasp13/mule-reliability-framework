@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<domain:mule-domain
+        xmlns:db="http://www.mulesoft.org/schema/mule/db"
+        xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp"
+        xmlns="http://www.mulesoft.org/schema/mule/core"
+        xmlns:domain="http://www.mulesoft.org/schema/mule/ee/domain"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xsi:schemaLocation="
+               http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+               http://www.mulesoft.org/schema/mule/ee/domain http://www.mulesoft.org/schema/mule/ee/domain/current/mule-domain-ee.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<amqp:config name="AMQP_Config" doc:name="AMQP Config" doc:id="e2e44a7a-a7d8-4088-9873-b292cb4a846a" >
+		<amqp:connection host="host" port="5672" virtualHost="/vhost" username="u" password="p" />
+	</amqp:config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="be476f88-74f7-481c-af26-2d5aa0accda9" >
+		<db:oracle-connection host="host" user="u" password="p" instance="xe"/>
+	</db:config>
+
+
+    <!-- configure here resource to be shared within the domain -->
+
+</domain:mule-domain>
